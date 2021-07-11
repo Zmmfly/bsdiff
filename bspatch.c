@@ -46,6 +46,7 @@ static int64_t offtin(uint8_t *buf)
 	return y;
 }
 
+
 int bspatch_stream(bspatch_read_stream *src_stream, size_t src_sz,
 					bspatch_write_stream *dst_stream, size_t dst_sz, 
 					bspatch_read_stream *patch_stream, size_t block_sz)
@@ -57,9 +58,9 @@ int bspatch_stream(bspatch_read_stream *src_stream, size_t src_sz,
 	int64_t ctrl[3];
 	
 	uint8_t *blockbuf[2] = {NULL,NULL};
-	size_t  patch_rdsz   = 0, patch_rdcnt = 0;
-	size_t  dst_wrsz     = 0, dst_wrcnt   = 0;
-	size_t  src_rdsz     = 0, src_rdcnt   = 0;
+	size_t  dif_rdsz     = 0, dif_rdrm  = 0, dif_cnt = 0;
+	size_t  dst_wrsz     = 0;
+	size_t  src_rdsz     = 0, src_rdrm  = 0, src_cnt = 0;
 
 	if (src_stream == NULL || src_sz == 0 ||
 		dst_stream == NULL || dst_sz == 0 ||
@@ -70,11 +71,17 @@ int bspatch_stream(bspatch_read_stream *src_stream, size_t src_sz,
 
 	blockbuf[0] = (uint8_t *)malloc(block_sz);
 	blockbuf[1] = (uint8_t *)malloc(block_sz);
-	if (blockbuf[0] == NULL || blockbuf[1] == NULL) goto __exit;
+	if (blockbuf[0] == NULL || blockbuf[1] == NULL) {
+		ret = -2;
+		goto __exit;
+	}
 
 	while(newpos < dst_sz) {
 		for (i=0; i<= 2; i++) {
-			if ( patch_stream->read(patch_stream, -1, buf, 8) != 8) return -1;
+			if ( patch_stream->read(patch_stream, -1, buf, 8) != 8) {
+				ret = -3;
+				goto __exit;
+			}
 			ctrl[i] = offtin(buf);
 		}
 
@@ -83,51 +90,70 @@ int bspatch_stream(bspatch_read_stream *src_stream, size_t src_sz,
 			ctrl[1] < 0 || ctrl[1] > INT_MAX ||
 			newpos + ctrl[0] > dst_sz )
 		{
+			ret = -4;
 			goto __exit;
 		}
 
-		// read diff string
-		patch_rdsz = patch_rdcnt = 0;
-		src_rdsz   = src_rdcnt   = 0;
-		do {
-			// read patch
-			patch_rdsz =  patch_stream->read(patch_stream, -1, blockbuf[0], block_sz);
-			if (patch_rdsz > 0) patch_rdcnt += patch_rdsz;
+		dif_rdsz = dif_rdrm = dif_cnt = 0;
+		src_rdsz = src_rdrm = src_cnt = 0;
+		dif_rdrm = ctrl[0];
 
-			// read src
-			src_rdsz = src_stream->read(src_stream, -1, blockbuf[1], block_sz);
-			if (src_rdsz > 0) src_rdcnt+= src_rdsz;
+		while( dif_rdrm > 0) {
+			// read diff string
+			memset(blockbuf[0], 0, block_sz);
+			dif_rdsz =  patch_stream->read(patch_stream, -1, blockbuf[0], dif_rdrm > block_sz ? block_sz : dif_rdrm);
 
-			// add old data to diff string
-			if ( (oldpos + src_rdcnt >=0) && (oldpos + src_rdcnt < src_sz) )
-			{
-				for(i = 0; i<(patch_rdsz < src_rdsz ? patch_rdsz : src_rdsz); i++)
+			if ((oldpos+src_cnt>=0) && (oldpos+src_cnt<src_sz)) {
+				// add old data to diff string
+				memset(blockbuf[1], 0, block_sz);
+				src_rdsz = src_stream->read(src_stream, oldpos+src_cnt, blockbuf[1], block_sz);
+				for(i=0; i<dif_rdsz; i++)
 				{
-					blockbuf[0][i] += blockbuf[1][i];
+					if ( (oldpos+src_cnt+i >= 0) && (oldpos+src_cnt+i < src_sz) )
+					{
+						blockbuf[0][i] += blockbuf[1][i];
+					}
+				}
+				if (src_rdsz > 0){
+					src_cnt  += src_rdsz;
 				}
 			}
 
+			if (dif_rdsz > 0) {
+				dif_rdrm -= dif_rdsz;
+				dif_cnt  += dif_rdsz;
+			}
+
 			// write to dst
-			dst_stream->write(dst_stream, -1, blockbuf[0], patch_rdsz);
-		} while( patch_rdcnt < ctrl[0]);
+			dst_stream->write(dst_stream, newpos+dif_cnt-dif_rdsz, blockbuf[0], dif_rdsz);
+		}
 
 		// adjust pointers
 		newpos += ctrl[0];
 		oldpos += ctrl[0];
 
 		// sanity-check
-		if (newpos + ctrl[1] > dst_sz) return -1;
+		if (newpos + ctrl[1] > dst_sz) {
+			ret = -5;
+			goto __exit;
+		}
 
 		// read extra string
-		patch_rdsz = patch_rdcnt = 0;
-		dst_wrsz   = dst_wrcnt   = 0;
+		dif_rdsz = dif_cnt = 0;
+		dst_wrsz = 0;
+		dif_rdrm = ctrl[1];
 		do{
-			patch_rdsz = patch_stream->read(patch_stream, -1, blockbuf[0], block_sz);
-			if (patch_rdsz > 0) {
-				patch_rdcnt += patch_rdsz;
-				dst_wrsz = dst_stream->write(dst_stream, -1, blockbuf[0], patch_rdsz);
+			memset(blockbuf[0], 0, block_sz);
+			dif_rdsz = patch_stream->read(patch_stream, -1, blockbuf[0], dif_rdrm > block_sz ? block_sz : dif_rdrm);
+			if (dif_rdsz > 0) {
+				dif_rdrm -= dif_rdsz;
+				dst_wrsz  = dst_stream->write(dst_stream, -1, blockbuf[0], dif_rdsz);
+				if (dst_wrsz != dif_rdsz) {
+					ret = -6;
+					goto __exit;
+				}
 			}
-		}while(patch_rdcnt < ctrl[1]);
+		}while(dif_rdrm > 0);
 
 		// adjust pointers
 		newpos += ctrl[1];
