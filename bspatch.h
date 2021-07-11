@@ -36,6 +36,63 @@ struct bspatch_stream
 	int (*read)(const struct bspatch_stream* stream, void* buffer, int length);
 };
 
+typedef struct bspatch_read_stream
+{
+	void *ctx;
+	/**
+	 * @brief read stream
+	 * 
+	 * @param stream stream pointer
+	 * @param pos position, -1 for cur pos
+	 * @param buffer read buffer
+	 * @param length want read length
+	 * 
+	 * @return read length
+	 */
+	size_t (*read)(struct bspatch_read_stream *stream, int64_t pos, void *buffer, size_t length);
+}bspatch_read_stream;
+
+typedef struct bspatch_write_stream
+{
+	void *ctx;
+	/**
+	 * @brief write stream
+	 * 
+	 * @param stream stream pointer
+	 * @param pos position, -1 for cur pos, -2 for head, other positive for position
+	 * @param buffer write buffer
+	 * @param length write buffer length
+	 * 
+	 * @return length writed
+	 */
+	size_t (*write)(struct bspatch_write_stream *stream, int64_t pos, void *buffer, size_t length);
+}bspatch_write_stream;
+
+/**
+ * @brief bspatch stream version, with block read write
+ * 
+ * @param src_stream src read stream
+ * @param src_sz src size
+ * @param dst_stream dst write stream
+ * @param dst_sz dst size
+ * @param patch_stream patch read stream
+ * @param block_sz Read write block, too small maybe too slow, but memory usage better.
+ * @return int 
+ */
+int bspatch_stream(bspatch_read_stream *src_stream, size_t src_sz,
+					bspatch_write_stream *dst_stream, size_t dst_sz, 
+					bspatch_read_stream *patch_stream, size_t block_sz);
+
+/**
+ * @brief bspatch origin
+ * 
+ * @param old old data buffer
+ * @param oldsize old size
+ * @param new new data buffer
+ * @param newsize new size
+ * @param stream patch read stream
+ * @return int 
+ */
 int bspatch(const uint8_t* old, int64_t oldsize, uint8_t* new, int64_t newsize, struct bspatch_stream* stream);
 
 #endif

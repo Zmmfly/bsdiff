@@ -46,6 +46,102 @@ static int64_t offtin(uint8_t *buf)
 	return y;
 }
 
+int bspatch_stream(bspatch_read_stream *src_stream, size_t src_sz,
+					bspatch_write_stream *dst_stream, size_t dst_sz, 
+					bspatch_read_stream *patch_stream, size_t block_sz)
+{
+	int ret = -1;
+	int64_t i;
+	uint8_t buf[8];
+	int64_t oldpos, newpos;
+	int64_t ctrl[3];
+	
+	uint8_t *blockbuf[2] = {NULL,NULL};
+	size_t  patch_rdsz   = 0, patch_rdcnt = 0;
+	size_t  dst_wrsz     = 0, dst_wrcnt   = 0;
+	size_t  src_rdsz     = 0, src_rdcnt   = 0;
+
+	if (src_stream == NULL || src_sz == 0 ||
+		dst_stream == NULL || dst_sz == 0 ||
+		patch_stream == NULL || block_sz == 0)
+	{
+		goto __exit;
+	}
+
+	blockbuf[0] = (uint8_t *)malloc(block_sz);
+	blockbuf[1] = (uint8_t *)malloc(block_sz);
+	if (blockbuf[0] == NULL || blockbuf[1] == NULL) goto __exit;
+
+	while(newpos < dst_sz) {
+		for (i=0; i<= 2; i++) {
+			if ( patch_stream->read(patch_stream, -1, buf, 8) != 8) return -1;
+			ctrl[i] = offtin(buf);
+		}
+
+		// sanity-check
+		if (ctrl[0] < 0 || ctrl[0] > INT_MAX ||
+			ctrl[1] < 0 || ctrl[1] > INT_MAX ||
+			newpos + ctrl[0] > dst_sz )
+		{
+			goto __exit;
+		}
+
+		// read diff string
+		patch_rdsz = patch_rdcnt = 0;
+		src_rdsz   = src_rdcnt   = 0;
+		do {
+			// read patch
+			patch_rdsz =  patch_stream->read(patch_stream, -1, blockbuf[0], block_sz);
+			if (patch_rdsz > 0) patch_rdcnt += patch_rdsz;
+
+			// read src
+			src_rdsz = src_stream->read(src_stream, -1, blockbuf[1], block_sz);
+			if (src_rdsz > 0) src_rdcnt+= src_rdsz;
+
+			// add old data to diff string
+			if ( (oldpos + src_rdcnt >=0) && (oldpos + src_rdcnt < src_sz) )
+			{
+				for(i = 0; i<(patch_rdsz < src_rdsz ? patch_rdsz : src_rdsz); i++)
+				{
+					blockbuf[0][i] += blockbuf[1][i];
+				}
+			}
+
+			// write to dst
+			dst_stream->write(dst_stream, -1, blockbuf[0], patch_rdsz);
+		} while( patch_rdcnt < ctrl[0]);
+
+		// adjust pointers
+		newpos += ctrl[0];
+		oldpos += ctrl[0];
+
+		// sanity-check
+		if (newpos + ctrl[1] > dst_sz) return -1;
+
+		// read extra string
+		patch_rdsz = patch_rdcnt = 0;
+		dst_wrsz   = dst_wrcnt   = 0;
+		do{
+			patch_rdsz = patch_stream->read(patch_stream, -1, blockbuf[0], block_sz);
+			if (patch_rdsz > 0) {
+				patch_rdcnt += patch_rdsz;
+				dst_wrsz = dst_stream->write(dst_stream, -1, blockbuf[0], patch_rdsz);
+			}
+		}while(patch_rdcnt < ctrl[1]);
+
+		// adjust pointers
+		newpos += ctrl[1];
+		oldpos += ctrl[2];
+	}
+
+	ret = 0;
+
+	__exit:
+	if (blockbuf[0]) free(blockbuf[0]);
+	if (blockbuf[1]) free(blockbuf[1]);
+	return ret;
+}
+
 int bspatch(const uint8_t* old, int64_t oldsize, uint8_t* new, int64_t newsize, struct bspatch_stream* stream)
 {
 	uint8_t buf[8];
