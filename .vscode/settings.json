@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "bsdiff.h": "c",
+        "bspatch.h": "c",
+    }
+}

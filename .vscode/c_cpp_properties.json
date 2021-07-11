@@ -1,0 +1,27 @@
+{
+    "configurations": [
+        {
+            "name": "bsdiff",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}",
+                "${workspaceFolder}/bzip2"
+            ],
+            "browse": {
+                "path": [
+                    "${default}",
+                    "${workspaceFolder}",
+                    "${workspaceFolder}/*"
+                ],
+                "limitSymbolsToIncludedHeaders": false,
+                "databaseFilename": "${workspaceRoot}/.vscode/browse.vc.db"
+            },
+            "defines": [
+                "BSDIFF_EXECUTABLE",
+                "BSPATCH_EXECUTABLE"
+            ],
+            "intelliSenseMode":"${default}"
+        }
+    ],
+    "version": 4
+}

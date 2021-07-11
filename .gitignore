@@ -1,5 +1,9 @@
 .deps/*
 .libs/*
+build
+.vscode/BROWSE.*
+.vscode/compile_commands.json
+.xmake
 *.lo
 *.o
 .dirstamp
