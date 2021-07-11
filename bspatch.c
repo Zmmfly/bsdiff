@@ -104,7 +104,7 @@ int bspatch(const uint8_t* old, int64_t oldsize, uint8_t* new, int64_t newsize, 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <err.h>
+#include <stdarg.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -122,6 +122,24 @@ static int bz2_read(const struct bspatch_stream* stream, void* buffer, int lengt
 		return -1;
 
 	return 0;
+}
+
+void errx(int level, char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
+}
+
+void err(int level, char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
 }
 
 int main(int argc,char * argv[])

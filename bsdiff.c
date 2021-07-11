@@ -354,7 +354,6 @@ int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t news
 #include <sys/types.h>
 
 #include <bzlib.h>
-#include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -371,6 +370,24 @@ static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size)
 		return -1;
 
 	return 0;
+}
+
+void errx(int level, char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
+}
+
+void err(int level, char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
 }
 
 int main(int argc,char *argv[])
